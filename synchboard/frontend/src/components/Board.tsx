@@ -7,9 +7,11 @@ import {
   type DragStartEvent,
   useSensor,
   useSensors,
+  defaultDropAnimationSideEffects,
+  type DropAnimation,
 } from '@dnd-kit/core';
 import { motion } from 'framer-motion';
-import { Pin as PinIcon, Plus } from 'lucide-react';
+import { Pin as PinIcon, Plus, AlertCircle, MapPin, Edit2, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import toast, { Toaster } from 'react-hot-toast';
 import { useTasks } from '../hooks/useTasks';
@@ -74,15 +76,16 @@ export default function Board() {
         result.reason === 'terminal'
           ? 'Done is final — this task can\'t move back.'
           : 'Must pass through "In Progress" first.';
-      toast.error(message, { icon: '📌' });
+      toast.error(message, { icon: <AlertCircle size={18} color="#EF4444" /> });
       // Pro touch: error vibration pattern
       if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate([10, 30, 10]);
-    } else {
-      const label = COLUMNS.find((c) => c.id === target)?.title;
-      toast.success(`Moved to ${label}`, { icon: '📍' });
-      // Pro touch: success vibration
-      if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(15);
+      return;
     }
+
+    const label = COLUMNS.find((c) => c.id === target)?.title;
+    toast.success(`Moved to ${label}`, { icon: <MapPin size={18} color="#10B981" /> });
+    // Pro touch: success vibration
+    if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(15);
   }
 
   function openAddModal() {
@@ -100,10 +103,10 @@ export default function Board() {
   function handleModalSubmit(title: string, description: string, color: NoteColor) {
     if (modalMode === 'add') {
       addTask(title, description, color);
-      toast.success('Task pinned to the board', { icon: '📌' });
+      toast.success('Task pinned to the board', { icon: <PinIcon size={18} color="#3B82F6" /> });
     } else if (editingTask) {
       updateTask(editingTask.id, { title, description, color });
-      toast.success('Task updated', { icon: '✏️' });
+      toast.success('Task updated', { icon: <Edit2 size={18} color="#F59E0B" /> });
     }
     setModalOpen(false);
   }
@@ -111,10 +114,22 @@ export default function Board() {
   function handleConfirmDelete() {
     if (pendingDelete) {
       deleteTask(pendingDelete.id);
-      toast('Note removed', { icon: '🗑️' });
+      toast('Note removed', { icon: <Trash2 size={18} color="#6B7280" /> });
       setPendingDelete(null);
     }
   }
+
+  const dropAnimationConfig: DropAnimation = {
+    sideEffects: defaultDropAnimationSideEffects({
+      styles: {
+        active: {
+          opacity: '0.9',
+        },
+      },
+    }),
+    duration: 150, // Ultra-fast snap
+    easing: 'cubic-bezier(0.18, 0.67, 0.6, 1.22)', // Bouncy snappy feel
+  };
 
   return (
     <div className="board-page">
@@ -163,7 +178,7 @@ export default function Board() {
                 </div>
               ))}
             </div>
-            <DragOverlay dropAnimation={{ duration: 200, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' }}>
+            <DragOverlay dropAnimation={dropAnimationConfig}>
               {activeTask ? <DragGhost task={activeTask} tiltDelta={dragDeltaX} /> : null}
             </DragOverlay>
           </DndContext>
