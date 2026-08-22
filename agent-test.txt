@@ -1,0 +1,1 @@
+This is a placeholder file created to demonstrate the git workflow.
