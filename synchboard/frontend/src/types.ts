@@ -53,3 +53,4 @@ export function canEdit(status: TaskStatus): boolean {
 export function canDelete(status: TaskStatus): boolean {
   return status === 'todo' || status === 'done';
 }
+
