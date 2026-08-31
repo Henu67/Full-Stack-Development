@@ -1,0 +1,77 @@
+:root {
+  /* Board & chrome */
+  --board-bg: #eef1f5;
+  --frame: #d7dbe2;
+  --frame-dark: #aeb4bf;
+  --ink: #232a36;
+  --ink-soft: #5b6472;
+  --panel: rgba(255, 255, 255, 0.55);
+  --panel-border: rgba(35, 42, 54, 0.08);
+
+  /* Brand accent — the pushpin red, reused for primary actions */
+  --pin-red: #e63946;
+  --pin-red-dark: #b32433;
+
+  /* Sticky note colors */
+  --note-yellow: #ffe066;
+  --note-yellow-shadow: #e0c247;
+  --note-pink: #ffafc5;
+  --note-pink-shadow: #e293a9;
+  --note-sky: #8ecae6;
+  --note-sky-shadow: #6ba9c9;
+  --note-mint: #b7e4c7;
+  --note-mint-shadow: #93c1a4;
+  --note-lilac: #c9b6e4;
+  --note-lilac-shadow: #a893c2;
+
+  --font-display: 'Kalam', cursive;
+  --font-body: 'Inter', system-ui, sans-serif;
+
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-body);
+  color: var(--ink);
+  background: var(--board-bg);
+  min-height: 100svh;
+  background-image:
+    linear-gradient(rgba(35, 42, 54, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(35, 42, 54, 0.05) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+#root {
+  min-height: 100svh;
+}
+
+button {
+  font-family: inherit;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

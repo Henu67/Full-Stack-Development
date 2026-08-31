@@ -1,0 +1,10 @@
+{
+  "name": "synchboard-monolith",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Fullstack deployment for SynchBoard",
+  "scripts": {
+    "build": "cd frontend && npm install && npm run build && cd ../backend && npm install",
+    "start": "cd backend && npm start"
+  }
+}
