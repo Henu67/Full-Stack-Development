@@ -172,50 +172,39 @@ const API_URL = '/api/tasks';
 
   const moveTask = useCallback(
     (id: string, to: TaskStatus): MoveResult => {
-      let result: MoveResult = { ok: false, reason: 'not-found' };
-      let originalTask: Task | undefined;
+      const originalTask = tasks.find(t => t.id === id);
+      if (!originalTask) return { ok: false, reason: 'not-found' };
 
-      setTasks((prev) =>
-        prev.map((t) => {
-          if (t.id !== id) return t;
-          originalTask = t;
-          if (t.status === to) {
-            result = { ok: true };
-            return t;
-          }
-          if (!isAdjacentMove(t.status, to)) {
-            result = { ok: false, reason: t.status === 'done' ? 'terminal' : 'skip-column' };
-            return t;
-          }
-          result = { ok: true };
-          return { ...t, status: to, updatedAt: Date.now() };
-        })
-      );
-
-      if (result.ok && originalTask && originalTask.status !== to) {
-        // API update in background
-        if (token) {
-          fetch(`${API_URL}/${id}`, {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({ status: to }),
-          }).then(res => {
-            if (res.status === 401 || res.status === 403) {
-              logout();
-            }
-          }).catch(() => {
-            toast.error('Failed to sync move to server');
-            // Revert state if necessary, but skipping for simplicity in this prototype
-          });
-        }
+      if (originalTask.status === to) return { ok: true };
+      
+      if (!isAdjacentMove(originalTask.status, to)) {
+        return { ok: false, reason: originalTask.status === 'done' ? 'terminal' : 'skip-column' };
       }
 
-      return result;
+      // Optimistic update
+      setTasks((prev) => prev.map(t => t.id === id ? { ...t, status: to, updatedAt: Date.now() } : t));
+
+      // API update in background
+      if (token) {
+        fetch(`${API_URL}/${id}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ status: to }),
+        }).then(res => {
+          if (res.status === 401 || res.status === 403) {
+            logout();
+          }
+        }).catch(() => {
+          toast.error('Failed to sync move to server');
+        });
+      }
+
+      return { ok: true };
     },
-    [token]
+    [tasks, token, logout]
   );
 
   return { tasks, addTask, updateTask, deleteTask, moveTask };
