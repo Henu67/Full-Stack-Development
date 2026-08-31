@@ -125,5 +125,22 @@ Make sure you have [Node.js](https://nodejs.org/) installed on your computer.
    ```
    After running these commands, the terminal will show a link (usually `http://localhost:5173`). Open that link in your browser to see the app!
 
+3. **Run the Backend (Node.js + Express):**
+   Open a **new** terminal, go into the `backend` folder, install the required packages, and start the server.
+   ```bash
+   cd backend
+   npm install
+   ```
+   Create a `.env` file inside the `backend` folder and add your MongoDB connection string and a JWT secret:
+   ```env
+   MONGODB_URI=your_mongodb_atlas_connection_string
+   JWT_SECRET=supersecretkey
+   ```
+   Start the backend server:
+   ```bash
+   npm run dev
+   ```
+   The backend will run on `http://localhost:5000`.
+
 ---
 *Built by our team for the Full-Stack Workshop.*
