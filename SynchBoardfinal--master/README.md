@@ -16,7 +16,7 @@ To run the full-stack application, you need to start both the Backend (Server) a
 
 ### 1. Clone the repository
 ```bash
-git clone https://github.com/thisal-wtc/SynchBoardfinal-.git
+https://github.com/Henu67/Full-Stack-Development.git
 cd SynchBoardfinal-
 ```
 
