@@ -98,3 +98,5 @@ router.get('/profile', verifyToken, async (req, res) => {
 export default router;
 
 // Tested by Member 6 (Auth Dev)
+
+// Tested by Member 6 (Auth Dev)
