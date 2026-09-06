@@ -1,0 +1,216 @@
+import { useCallback, useEffect, useState } from 'react';
+import { useAuth } from '../context/AuthContext';
+import type { NoteColor, Task, TaskStatus } from '../types';
+import { canDelete, canEdit, isAdjacentMove } from '../types';
+import toast from 'react-hot-toast';
+
+export type MoveResult =
+  | { ok: true }
+  | { ok: false; reason: 'skip-column' | 'terminal' | 'not-found' };
+
+const API_URL = '/api/tasks';
+
+export function useTasks(roomId?: string) {
+  const [tasks, setTasks] = useState<Task[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const saved = localStorage.getItem(`synchboard_tasks_${roomId || 'personal'}`);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  // Sync tasks to localStorage for offline persistence
+  useEffect(() => {
+    if (tasks.length > 0) {
+      localStorage.setItem(`synchboard_tasks_${roomId || 'personal'}`, JSON.stringify(tasks));
+    }
+  }, [tasks, roomId]);
+  const { token, isAuthenticated, logout } = useAuth();
+
+  useEffect(() => {
+    if (!isAuthenticated || !token) return;
+
+    const fetchTasks = async () => {
+      try {
+        const url = roomId ? `${API_URL}?roomId=${roomId}` : API_URL;
+        const res = await fetch(url, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.status === 401 || res.status === 403) {
+          logout();
+          throw new Error('Session expired');
+        }
+        if (!res.ok) throw new Error('Failed to fetch tasks');
+        const data = await res.json();
+        // Map _id to id for frontend compatibility
+        setTasks(
+          data.map((t: any) => ({
+            ...t,
+            id: t._id,
+          }))
+        );
+      } catch (error) {
+        toast.error('Failed to load tasks');
+      }
+    };
+
+    fetchTasks();
+  }, [isAuthenticated, token, logout, roomId]);
+
+  const addTask = useCallback(
+    async (title: string, description: string, color: NoteColor, dueDate?: string | null, subtasks?: { title: string, completed: boolean }[]) => {
+      if (!token) return;
+      try {
+        const res = await fetch(API_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ title, description, color, status: 'todo', dueDate, room: roomId || null, subtasks: subtasks || [] }),
+        });
+        if (res.status === 401 || res.status === 403) {
+          logout();
+          throw new Error('Session expired');
+        }
+        if (!res.ok) throw new Error('Failed to create task');
+        const data = await res.json();
+        const newTask = { ...data, id: data._id };
+        setTasks((prev) => [...prev, newTask]);
+        return newTask;
+      } catch (error) {
+        toast.error('Failed to create task');
+      }
+    },
+    [token]
+  );
+
+  const updateTask = useCallback(
+    async (id: string, updates: { title: string; description: string; color: NoteColor; dueDate?: string | null; subtasks?: { title: string, completed: boolean }[] }) => {
+      if (!token) return false;
+      
+      // Optimistic update
+      let didUpdate = false;
+      setTasks((prev) =>
+        prev.map((t) => {
+          if (t.id !== id) return t;
+          if (!canEdit(t.status)) return t;
+          didUpdate = true;
+          return {
+            ...t,
+            title: updates.title.trim(),
+            description: updates.description.trim(),
+            color: updates.color,
+            dueDate: updates.dueDate,
+            subtasks: updates.subtasks !== undefined ? updates.subtasks : t.subtasks,
+            updatedAt: Date.now(),
+          };
+        })
+      );
+
+      if (!didUpdate) return false;
+
+      // API update
+      try {
+        const res = await fetch(`${API_URL}/${id}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(updates),
+        });
+        if (res.status === 401 || res.status === 403) {
+          logout();
+          throw new Error('Session expired');
+        }
+        if (!res.ok) throw new Error('Failed to update task');
+        return true;
+      } catch (error) {
+        toast.error('Failed to update task on server');
+        return false;
+      }
+    },
+    [token]
+  );
+
+  const deleteTask = useCallback(
+    async (id: string): Promise<boolean> => {
+      if (!token) return false;
+
+      // Optimistic delete
+      let didDelete = false;
+      setTasks((prev) => {
+        const task = prev.find((t) => t.id === id);
+        if (!task || !canDelete(task.status)) return prev;
+        didDelete = true;
+        return prev.filter((t) => t.id !== id);
+      });
+
+      if (!didDelete) return false;
+
+      // API delete
+      try {
+        const res = await fetch(`${API_URL}/${id}`, {
+          method: 'DELETE',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        if (res.status === 401 || res.status === 403) {
+          logout();
+          throw new Error('Session expired');
+        }
+        if (!res.ok) throw new Error('Failed to delete task');
+        return true;
+      } catch (error) {
+        toast.error('Failed to delete task on server');
+        return false;
+      }
+    },
+    [token]
+  );
+
+  const moveTask = useCallback(
+    (id: string, to: TaskStatus): MoveResult => {
+      const originalTask = tasks.find(t => t.id === id);
+      if (!originalTask) return { ok: false, reason: 'not-found' };
+
+      if (originalTask.status === to) return { ok: true };
+      
+      if (!isAdjacentMove(originalTask.status, to)) {
+        return { ok: false, reason: originalTask.status === 'done' ? 'terminal' : 'skip-column' };
+      }
+
+      // Optimistic update
+      setTasks((prev) => prev.map(t => t.id === id ? { ...t, status: to, updatedAt: Date.now() } : t));
+
+      // API update in background
+      if (token) {
+        fetch(`${API_URL}/${id}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ status: to }),
+        }).then(res => {
+          if (res.status === 401 || res.status === 403) {
+            logout();
+          }
+        }).catch(() => {
+          toast.error('Failed to sync move to server');
+        });
+      }
+
+      return { ok: true };
+    },
+    [tasks, token, logout]
+  );
+
+  return { tasks, setTasks, addTask, updateTask, deleteTask, moveTask };
+}
+
+// Tested by Henuka Pathirana
