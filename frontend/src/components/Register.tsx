@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import { motion } from 'framer-motion';
 
 const Register: React.FC = () => {
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const navigate = useNavigate();
