@@ -6,7 +6,7 @@ import { ApiError } from '../utils/ApiError.js';
 // literal text, never interpreted as a regex pattern. This closes off both
 // ReDoS (a crafted pattern like "(a+)+$" causing catastrophic backtracking)
 // and incorrect matches (an unescaped "." matching any character).
-function escapeRegex(str) {
+export function escapeRegex(str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
