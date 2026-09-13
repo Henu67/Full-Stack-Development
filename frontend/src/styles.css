@@ -73,6 +73,53 @@
   color: var(--ink-soft);
 }
 
+/* Secondary row under the app bar: room members + invite (left) and the
+   Add task button (right). Kept out of .board-header so the header stays
+   a pure app-bar (brand + tool icons only). */
+.board-subheader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+
+.board-members {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+}
+
+.board-invite-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #4f46e5;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.board-invite-btn:hover {
+  background: rgba(79, 70, 229, 0.08);
+}
+
+[data-theme="dark"] .board-invite-btn {
+  color: #818cf8;
+}
+
+[data-theme="dark"] .board-invite-btn:hover {
+  background: rgba(129, 140, 248, 0.12);
+}
+
 /* =========================================================
    Buttons
    ========================================================= */
@@ -133,6 +180,15 @@
   box-shadow: 0 22px 45px rgba(35, 42, 54, 0.14), inset 0 0 0 2px rgba(255, 255, 255, 0.6);
   position: relative;
   padding: 22px 22px 30px;
+  /* Board.tsx renders this as a flex container (className="board-frame
+     relative flex") so the board content and the decorative tray strip
+     below it lay out correctly. Without an explicit column direction,
+     flex defaults to row, which puts the empty .board-tray element next
+     to the columns instead of underneath them — its left/right margins
+     then eat into the row's width and leave a lopsided gap on the right
+     of the last column. Column direction stacks the tray under the
+     content as intended and keeps the columns perfectly centered. */
+  flex-direction: column;
 }
 
 [data-theme="dark"] .board-frame {
@@ -169,8 +225,19 @@
 
 .board-columns {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: stretch;
   gap: 20px;
+}
+
+.board-columns > div {
+  min-width: 0;
+  height: 100%;
+}
+
+.add-column-slot {
+  flex-shrink: 0;
+  width: 260px;
 }
 
 /* =========================================================
@@ -181,13 +248,20 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--surface);
+  border: 1px solid var(--panel-border);
+  border-radius: 16px;
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
 }
 
 .column-header {
   display: flex;
   align-items: baseline;
   gap: 10px;
-  padding: 4px 6px 0;
+  padding: 16px 18px 0;
 }
 
 .column-header h3 {
@@ -207,7 +281,7 @@
 }
 
 .column-hint {
-  margin: 2px 6px 10px;
+  margin: 2px 18px 10px;
   font-size: 12px;
   color: var(--ink-soft);
 }
@@ -219,8 +293,8 @@
   max-height: 62vh;
   overflow-y: auto;
   overflow-x: hidden;
-  border-radius: 14px;
-  padding: 14px 14px 60px;
+  border-radius: 0 0 16px 16px;
+  padding: 16px 18px 60px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -466,8 +540,10 @@
   inset: 0;
   background: rgba(20, 24, 32, 0.45);
   backdrop-filter: blur(3px);
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow-y: auto;
   z-index: 100;
   padding: 20px;
 }
@@ -475,6 +551,8 @@
 .modal-card {
   width: 100%;
   max-width: 380px;
+  max-height: calc(100svh - 40px);
+  overflow-y: auto;
   border-radius: 6px 6px 16px 6px;
   padding: 26px 24px 22px;
   box-shadow: 8px 16px 34px rgba(0, 0, 0, 0.32);
@@ -482,6 +560,7 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
+  margin: auto;
 }
 
 .modal-card h2 {
@@ -592,10 +671,13 @@
 .confirm-card {
   width: 100%;
   max-width: 340px;
+  max-height: calc(100svh - 40px);
+  overflow-y: auto;
   background: white;
   border-radius: 14px;
   padding: 22px;
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+  margin: auto;
 }
 
 [data-theme="dark"] .confirm-card {
@@ -646,43 +728,152 @@
     align-items: flex-start;
   }
 
+  .board-subheader {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  .board-members {
+    justify-content: flex-start;
+  }
+
   .btn-add {
     width: 100%;
     justify-content: center;
   }
 
+  /* All 3 columns stay side-by-side and shrink together instead of the
+     previous "swipe through one full-width column at a time" carousel —
+     no horizontal scrolling at any width. Each column's own drop zone
+     still scrolls vertically on its own. */
   .board-columns {
-    display: flex;
-    overflow-x: auto;
-    scroll-snap-type: x mandatory;
-    gap: 12px;
-    padding-bottom: 20px;
-    -webkit-overflow-scrolling: touch;
-    scroll-padding: 0 5vw;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    padding-bottom: 0;
   }
 
-  .board-columns::-webkit-scrollbar {
-    height: 8px;
-  }
-
-  .board-columns::-webkit-scrollbar-thumb {
-    background: rgba(35, 42, 54, 0.2);
-    border-radius: 999px;
-  }
-  
   .column {
-    min-width: 85vw;
-    scroll-snap-align: center;
+    min-width: 0;
+    border-radius: 12px;
+  }
+
+  .column-header {
+    gap: 4px;
+    padding: 12px 10px 0;
+  }
+
+  .column-header h3 {
+    font-size: 15px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .column-count {
+    font-size: 10px;
+    padding: 1px 6px;
     flex-shrink: 0;
   }
 
-  .column-drop-zone {
-    min-height: 60vh;
-    max-height: 70vh;
+  .column-hint {
+    display: none;
   }
-  
+
+  .column-drop-zone {
+    min-height: 50vh;
+    max-height: 65vh;
+    border-radius: 0 0 12px 12px;
+    padding: 10px 8px 40px;
+    gap: 10px;
+  }
+
   .sticky-note {
     max-width: 100%;
+    padding: 12px 8px 10px;
+  }
+
+  .add-column-slot {
+    grid-column: 1 / -1;
+    width: auto;
+  }
+}
+
+/* Small phones: 320px–480px — tighten the header toolbar so it never
+   overflows horizontally (search bar + several icon buttons + add button) */
+@media (max-width: 480px) {
+  .board-header {
+    gap: 12px;
+  }
+
+  .board-tools {
+    flex-wrap: wrap;
+    width: 100%;
+    row-gap: 10px;
+  }
+
+  .search-bar {
+    min-width: 0;
+    flex: 1 1 100%;
+    order: 5;
+    margin-right: 0;
+  }
+
+  .btn-add {
+    order: 6;
+  }
+
+  .notification-dropdown {
+    width: calc(100vw - 32px);
+    right: 16px;
+  }
+
+  .board-brand h1 {
+    font-size: 22px;
+  }
+
+  /* Below ~480px, three side-by-side columns get genuinely tight — trim
+     spacing and text size further so headers/cards stay legible instead
+     of wrapping awkwardly or forcing overflow. */
+  .board-columns {
+    gap: 8px;
+  }
+
+  .column {
+    border-radius: 10px;
+  }
+
+  .column-header {
+    padding: 10px 8px 0;
+  }
+
+  .column-drop-zone {
+    border-radius: 0 0 10px 10px;
+    padding: 8px 6px 32px;
+    gap: 8px;
+  }
+
+  .column-header h3 {
+    font-size: 12px;
+  }
+
+  .column-count {
+    padding: 1px 5px;
+    font-size: 9px;
+  }
+
+  .sticky-note {
+    padding: 10px 6px 8px;
+  }
+
+  .note-title {
+    font-size: 13px;
+  }
+
+  .note-desc {
+    font-size: 11px;
   }
 }
 
@@ -729,6 +920,20 @@
   font-family: var(--font-display);
   font-size: 32px;
   color: var(--ink);
+}
+
+@media (max-width: 400px) {
+  .auth-page {
+    padding: 16px;
+  }
+
+  .auth-card {
+    padding: 28px 20px;
+  }
+
+  .auth-brand h1 {
+    font-size: 26px;
+  }
 }
 
 .auth-title {
@@ -796,6 +1001,30 @@
 .auth-btn:active {
   transform: translateY(2px);
   box-shadow: 0 2px 5px rgba(79, 70, 229, 0.25), 0 0px 0 #4338ca;
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 20px 0 16px;
+  color: var(--ink-soft);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--panel-border);
+}
+
+.auth-google-btn {
+  display: flex;
+  justify-content: center;
 }
 
 .auth-footer {

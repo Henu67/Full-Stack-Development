@@ -11,16 +11,15 @@ import {
   type DropAnimation,
 } from '@dnd-kit/core';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, AlertCircle, MapPin, Edit2, Trash2, Search, Bell, ArrowLeft } from 'lucide-react';
-import { Moon, Sun, MessageSquare, Calendar as CalendarIcon, Phone } from 'lucide-react';
-import { useEffect, useMemo, useState, useRef } from 'react';
+import { Plus, AlertCircle, MapPin, Edit2, Trash2, Search, Bell, ArrowLeft, Star } from 'lucide-react';
+import { MessageSquare, Calendar as CalendarIcon, Phone } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useTasks } from '../hooks/useTasks';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
-import { useTheme } from '../context/ThemeContext';
-import type { NoteColor, Task, TaskStatus } from '../types';
+import type { ColumnConfig, NoteColor, Task, TaskStatus } from '../types';
 import Column from './Column';
 import ConfirmDialog from './ConfirmDialog';
 import DragGhost from './DragGhost';
@@ -35,7 +34,45 @@ interface Activity {
   time: Date;
 }
 
-export default function Board() {
+interface CursorUser {
+  name?: string;
+  avatar?: string;
+}
+
+interface CursorData {
+  x: number;
+  y: number;
+  user: CursorUser;
+}
+
+interface RoomMember {
+  user?: { _id: string; name?: string; email?: string; avatar?: string };
+  role?: 'owner' | 'editor' | 'viewer';
+}
+
+interface RawMember {
+  user?: { _id: string; name?: string; email?: string; avatar?: string } | string;
+  role?: 'owner' | 'editor' | 'viewer';
+  _id?: string;
+}
+
+interface RawTask extends Omit<Task, 'id'> {
+  _id?: string;
+  id?: string;
+}
+
+interface CursorMoveData extends CursorData {
+  socketId: string;
+}
+
+interface BoardProps {
+  // When true, the board is rendered inline inside another page (e.g. the
+  // Home page's personal board section) instead of as its own full route,
+  // so the redundant back-button/brand header is skipped.
+  embedded?: boolean;
+}
+
+export default function Board({ embedded = false }: BoardProps) {
   const { id: roomId } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const isPersonal = !roomId || roomId === 'personal';
@@ -43,7 +80,6 @@ export default function Board() {
 
   const { user, token } = useAuth();
   const { socket, isConnected } = useSocket();
-  const { theme, toggleTheme } = useTheme();
   const { tasks, setTasks, addTask, updateTask, deleteTask, moveTask } = useTasks(actualRoomId);
 
   const [activeTask, setActiveTask] = useState<Task | null>(null);
@@ -55,7 +91,7 @@ export default function Board() {
   const [dragDeltaX, setDragDeltaX] = useState(0);
 
   // Live cursors state
-  const [cursors, setCursors] = useState<{ [id: string]: { x: number, y: number, user: any } }>({});
+  const [cursors, setCursors] = useState<{ [id: string]: CursorData }>({});
 
   // Pro Features State
   const [searchQuery, setSearchQuery] = useState('');
@@ -65,15 +101,13 @@ export default function Board() {
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isVoiceOpen, setIsVoiceOpen] = useState(false);
   const [isCalendarView, setIsCalendarView] = useState(false);
-  const [userRole, setUserRole] = useState<'owner' | 'editor' | 'viewer'>('editor'); // default editor for personal
-  const [columns, setColumns] = useState<any[]>([]);
-  const [pendingDeleteColumn, setPendingDeleteColumn] = useState<string | null>(null);
-  const [roomMembers, setRoomMembers] = useState<any[]>([]);
-  
-  // Column Modal State
+  const [roomRole, setRoomRole] = useState<'owner' | 'editor' | 'viewer'>('editor'); // role fetched for team rooms
+  const userRole = actualRoomId ? roomRole : 'editor'; // personal board is always editable by its owner
+  const [columns, setColumns] = useState<ColumnConfig[]>([]);
+  const [roomMembers, setRoomMembers] = useState<RoomMember[]>([]);
+
+  // Add Column Modal State (rename/delete of columns has been removed)
   const [columnModalOpen, setColumnModalOpen] = useState(false);
-  const [columnModalMode, setColumnModalMode] = useState<'add' | 'edit'>('add');
-  const [editingColumn, setEditingColumn] = useState<any>(null);
   const [columnTitleInput, setColumnTitleInput] = useState('');
 
   // Fetch Room Role & Columns
@@ -85,26 +119,26 @@ export default function Board() {
       .then(res => res.json())
       .then(data => {
         if (data.members) {
-          const myMembership = data.members.find((m: any) => {
-            if (m.user && m.user._id) return m.user._id === user?.id;
-            return m === user?.id || (m._id && m._id === user?.id);
+          const myMembership = data.members.find((m: RawMember) => {
+            if (m.user && typeof m.user === 'object') return m.user._id === user?.id;
+            if (typeof m.user === 'string') return m.user === user?.id;
+            return !!m._id && m._id === user?.id;
           });
           if (myMembership && myMembership.role) {
-            setUserRole(myMembership.role);
+            setRoomRole(myMembership.role);
           } else {
-            setUserRole('editor');
+            setRoomRole('editor');
           }
           setRoomMembers(data.members);
         }
         if (data.columns && data.columns.length > 0) {
-          setColumns(data.columns.sort((a: any, b: any) => a.order - b.order));
+          setColumns(data.columns.sort((a: ColumnConfig, b: ColumnConfig) => a.order - b.order));
         } else {
           import('../types').then(t => setColumns(t.DEFAULT_COLUMNS));
         }
       })
       .catch(err => console.error(err));
     } else if (token) {
-      setUserRole('editor');
       // Fetch personal columns
       fetch(`${import.meta.env.VITE_API_URL || ''}/api/auth/profile`, {
         headers: { Authorization: `Bearer ${token}` }
@@ -112,7 +146,7 @@ export default function Board() {
       .then(res => res.json())
       .then(data => {
         if (data.personalColumns && data.personalColumns.length > 0) {
-          setColumns(data.personalColumns.sort((a: any, b: any) => a.order - b.order));
+          setColumns(data.personalColumns.sort((a: ColumnConfig, b: ColumnConfig) => a.order - b.order));
         } else {
           import('../types').then(t => setColumns(t.DEFAULT_COLUMNS));
         }
@@ -126,16 +160,16 @@ export default function Board() {
     if (socket && isConnected && actualRoomId) {
       socket.emit('join-room', actualRoomId);
 
-      const onTaskAdded = (newTask: any) => {
-        const task = { ...newTask, id: newTask._id || newTask.id };
+      const onTaskAdded = (newTask: RawTask) => {
+        const task: Task = { ...newTask, id: newTask._id || newTask.id || '' };
         setTasks(prev => {
           if (prev.find(t => t.id === task.id)) return prev;
           return [...prev, task];
         });
       };
 
-      const onTaskUpdated = (updatedTask: any) => {
-        const task = { ...updatedTask, id: updatedTask._id || updatedTask.id };
+      const onTaskUpdated = (updatedTask: RawTask) => {
+        const task: Task = { ...updatedTask, id: updatedTask._id || updatedTask.id || '' };
         setTasks(prev => prev.map(t => t.id === task.id ? task : t));
       };
 
@@ -143,7 +177,7 @@ export default function Board() {
         setTasks(prev => prev.filter(t => t.id !== taskId));
       };
 
-      const onCursorMove = (data: any) => {
+      const onCursorMove = (data: CursorMoveData) => {
         setCursors(prev => ({
           ...prev,
           [data.socketId]: data
@@ -189,12 +223,12 @@ export default function Board() {
       };
       
       // Throttle mouse moves (very naive implementation for demo)
-      let timeout: any;
+      let timeout: ReturnType<typeof setTimeout> | undefined;
       const throttledMove = (e: MouseEvent) => {
         if (timeout) return;
         timeout = setTimeout(() => {
           handleMouseMove(e);
-          timeout = null;
+          timeout = undefined;
         }, 50);
       };
 
@@ -206,6 +240,11 @@ export default function Board() {
   
   const notifRef = useRef<HTMLDivElement>(null);
   const notifiedTasks = useRef<Set<string>>(new Set());
+
+  const addActivity = useCallback((message: string) => {
+    setActivityLog(prev => [{ id: Math.random().toString(), message, time: new Date() }, ...prev]);
+    setHasUnread(true);
+  }, []);
 
   // Deadline notifications
   useEffect(() => {
@@ -241,7 +280,7 @@ export default function Board() {
         }
       }
     });
-  }, [tasks]);
+  }, [tasks, addActivity]);
 
   // Close notifications on click outside
   useEffect(() => {
@@ -253,11 +292,6 @@ export default function Board() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-
-  const addActivity = (message: string) => {
-    setActivityLog(prev => [{ id: Math.random().toString(), message, time: new Date() }, ...prev]);
-    setHasUnread(true);
-  };
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
@@ -363,7 +397,7 @@ export default function Board() {
     setModalOpen(false);
   }
 
-  const saveColumnsToBackend = (updatedColumns: any[]) => {
+  const saveColumnsToBackend = (updatedColumns: ColumnConfig[]) => {
     if (actualRoomId) {
       fetch(`${import.meta.env.VITE_API_URL || ''}/api/rooms/${actualRoomId}/columns`, {
         method: 'PUT',
@@ -381,39 +415,19 @@ export default function Board() {
 
   const handleSaveColumn = () => {
     if (!columnTitleInput.trim()) return;
-    
-    if (columnModalMode === 'add') {
-      const newCol = { 
-        id: columnTitleInput.toLowerCase().replace(/\s+/g, '-'), 
-        title: columnTitleInput, 
-        order: columns.length 
-      };
-      const updatedColumns = [...columns, newCol];
-      setColumns(updatedColumns);
-      saveColumnsToBackend(updatedColumns);
-      toast.success('Column added');
-    } else if (editingColumn) {
-      const updatedColumns = columns.map(c => 
-        c.id === editingColumn.id ? { ...c, title: columnTitleInput } : c
-      );
-      setColumns(updatedColumns);
-      saveColumnsToBackend(updatedColumns);
-      toast.success('Column updated');
-    }
-    
+
+    const newCol = {
+      id: columnTitleInput.toLowerCase().replace(/\s+/g, '-'),
+      title: columnTitleInput,
+      order: columns.length
+    };
+    const updatedColumns = [...columns, newCol];
+    setColumns(updatedColumns);
+    saveColumnsToBackend(updatedColumns);
+    toast.success('Column added');
+
     setColumnModalOpen(false);
     setColumnTitleInput('');
-    setEditingColumn(null);
-  };
-
-  const handleConfirmDeleteColumn = () => {
-    if (pendingDeleteColumn) {
-      const updatedColumns = columns.filter(c => c.id !== pendingDeleteColumn);
-      setColumns(updatedColumns);
-      saveColumnsToBackend(updatedColumns);
-      toast('Column removed');
-      setPendingDeleteColumn(null);
-    }
   };
 
   function handleConfirmDelete() {
@@ -445,74 +459,23 @@ export default function Board() {
   return (
     <div className="board-page">
       <header className="board-header">
-        <div className="board-brand">
-          <button 
-            className="btn-back" 
-            onClick={() => navigate('/dashboard')}
-            title="Back to Dashboard"
-          >
-            <ArrowLeft size={20} strokeWidth={2.5} />
-          </button>
-          <div className="brand-title">
-            <h1>SynchBoard</h1>
-            <span className="board-badge">{actualRoomId ? 'Team Board' : 'Personal Board'}</span>
-          </div>
-        </div>
-        
-        {/* Room Members Section */}
-        {!isPersonal && roomMembers.length > 0 && (
-          <div className="flex items-center gap-2 mr-auto ml-2 md:ml-6 pl-2 md:pl-6 border-l border-gray-300 dark:border-gray-700">
-            <div className="flex -space-x-2">
-              {roomMembers.slice(0, 4).map((member, idx) => (
-                <div key={idx} className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900 border-2 border-[var(--board-frame-bg)] flex items-center justify-center overflow-hidden shadow-sm" title={member.user?.name || member.user?.email || 'User'}>
-                  {member.user?.avatar ? (
-                    <img src={member.user.avatar} alt="" className="w-full h-full object-cover"/>
-                  ) : (
-                    <span className="text-xs font-bold text-indigo-700 dark:text-indigo-300">
-                      {member.user?.name ? member.user.name.substring(0, 2).toUpperCase() : 'U'}
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-            {roomMembers.length > 4 && (
-              <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">
-                +{roomMembers.length - 4}
-              </span>
-            )}
-            
-            <button 
-              onClick={() => {
-                // Fetch the room to get the invite code if we don't have it locally
-                fetch(`${import.meta.env.VITE_API_URL || ''}/api/rooms/${actualRoomId}`, {
-                  headers: { Authorization: `Bearer ${token}` }
-                })
-                .then(res => res.json())
-                .then(data => {
-                  if (data.inviteCode) {
-                    navigator.clipboard.writeText(`${window.location.origin}/join/${data.inviteCode}`);
-                    toast.success('Invite link copied!');
-                  }
-                });
-              }}
-              className="ml-2 p-1.5 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg transition-colors flex items-center gap-1 text-xs font-semibold"
-              title="Copy Invite Link"
+        {!embedded && (
+          <div className="board-brand">
+            <button
+              className="btn-back"
+              onClick={() => navigate(actualRoomId ? '/rooms' : '/')}
+              title={actualRoomId ? 'Back to Rooms' : 'Back to Home'}
             >
-              <Plus size={14} strokeWidth={3} />
-              <span className="hidden sm:inline">Invite</span>
+              <ArrowLeft size={20} strokeWidth={2.5} />
             </button>
+            <div className="brand-title">
+              <h1>SynchBoard</h1>
+              <span className="board-badge">{actualRoomId ? 'Team Board' : 'Personal Board'}</span>
+            </div>
           </div>
         )}
 
         <div className="board-tools">
-          <button
-            className="btn btn-ghost"
-            title="Toggle Dark Mode"
-            onClick={toggleTheme}
-          >
-            {theme === 'dark' ? <Sun size={18} color="var(--ink-soft)" /> : <Moon size={18} color="var(--ink-soft)" />}
-          </button>
-          
           <div className="search-bar">
             <Search size={16} color="var(--ink-soft)" />
             <input 
@@ -596,7 +559,69 @@ export default function Board() {
           <span style={{ fontSize: '14px', fontWeight: 600, color: 'var(--ink-soft)', marginLeft: '8px', display: 'none' }} className="user-email-display">
             {user?.email}
           </span>
-          
+        </div>
+      </header>
+
+      {/* Secondary row: room members + invite on the left, Add task on the
+          right. Kept separate from the app-bar-style header above so the
+          header only ever holds navigation/tool icons. */}
+      {(!isPersonal || userRole !== 'viewer') && (
+        <div className="board-subheader">
+          <div className="board-members">
+            {!isPersonal && roomMembers.length > 0 && (
+              <>
+                <div className="flex -space-x-2">
+                  {roomMembers.slice(0, 4).map((member, idx) => (
+                    <div
+                      key={idx}
+                      className={`relative w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900 border-2 border-[var(--board-frame-bg)] flex items-center justify-center overflow-hidden shadow-sm ${member.role === 'owner' ? 'z-10' : ''}`}
+                      title={`${member.user?.name || member.user?.email || 'User'}${member.role === 'owner' ? ' (Room Owner)' : ''}`}
+                    >
+                      {member.user?.avatar ? (
+                        <img src={member.user.avatar} alt="" className="w-full h-full object-cover"/>
+                      ) : (
+                        <span className="text-xs font-bold text-indigo-700 dark:text-indigo-300">
+                          {member.user?.name ? member.user.name.substring(0, 2).toUpperCase() : 'U'}
+                        </span>
+                      )}
+                      {member.role === 'owner' && (
+                        <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-yellow-400 border border-white dark:border-gray-900 flex items-center justify-center">
+                          <Star className="w-2 h-2 text-white" fill="currentColor" />
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {roomMembers.length > 4 && (
+                  <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">
+                    +{roomMembers.length - 4}
+                  </span>
+                )}
+
+                <button
+                  onClick={() => {
+                    // Fetch the room to get the invite code if we don't have it locally
+                    fetch(`${import.meta.env.VITE_API_URL || ''}/api/rooms/${actualRoomId}`, {
+                      headers: { Authorization: `Bearer ${token}` }
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                      if (data.inviteCode) {
+                        navigator.clipboard.writeText(`${window.location.origin}/join/${data.inviteCode}`);
+                        toast.success('Invite link copied!');
+                      }
+                    });
+                  }}
+                  className="board-invite-btn"
+                  title="Copy Invite Link"
+                >
+                  <Plus size={14} strokeWidth={3} />
+                  <span>Invite</span>
+                </button>
+              </>
+            )}
+          </div>
+
           {userRole !== 'viewer' && (
             <motion.button
               type="button"
@@ -609,10 +634,8 @@ export default function Board() {
               Add task
             </motion.button>
           )}
-          
-
         </div>
-      </header>
+      )}
 
       <main className="board-frame relative flex">
         {isCalendarView ? (
@@ -636,25 +659,15 @@ export default function Board() {
                       activeTask={activeTask}
                       onEdit={openEditModal}
                       onRequestDelete={setPendingDelete}
-                      onEditColumn={userRole !== 'viewer' ? (id, newTitle) => {
-                        setEditingColumn(columns.find(c => c.id === id));
-                        setColumnTitleInput(newTitle);
-                        setColumnModalMode('edit');
-                        setColumnModalOpen(true);
-                      } : undefined}
-                      onDeleteColumn={userRole !== 'viewer' ? (id) => {
-                        setPendingDeleteColumn(id);
-                      } : undefined}
                     />
                   </div>
                 ))}
                 
                 {/* Add Column Button */}
                 {userRole !== 'viewer' && (
-                  <div className="flex-shrink-0 w-80 pt-1">
+                  <div className="add-column-slot pt-1">
                     <button
                       onClick={() => {
-                        setColumnModalMode('add');
                         setColumnTitleInput('');
                         setColumnModalOpen(true);
                       }}
@@ -705,14 +718,6 @@ export default function Board() {
         onConfirm={handleConfirmDelete} 
       />
 
-      <ConfirmDialog 
-        open={!!pendingDeleteColumn}
-        title="Delete this column?"
-        message="Are you sure you want to delete this column? Tasks inside will be lost unless you move them."
-        onCancel={() => setPendingDeleteColumn(null)} 
-        onConfirm={handleConfirmDeleteColumn} 
-      />
-
       <AnimatePresence>
         {columnModalOpen && (
           <motion.div
@@ -729,7 +734,7 @@ export default function Board() {
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.92, y: 10 }}
             >
-              <h3>{columnModalMode === 'add' ? 'Add Column' : 'Edit Column'}</h3>
+              <h3>Add Column</h3>
               <div className="mt-4">
                 <input
                   type="text"
@@ -767,7 +772,7 @@ export default function Board() {
           }}
         >
           <div className="w-4 h-4 rounded-full bg-indigo-500 shadow-md border-2 border-white flex items-center justify-center overflow-hidden">
-             {cursor.user.avatar ? <img src={cursor.user.avatar} className="w-full h-full object-cover" /> : <span className="text-[8px] text-white font-bold">{cursor.user.name[0]}</span>}
+             {cursor.user.avatar ? <img src={cursor.user.avatar} className="w-full h-full object-cover" /> : <span className="text-[8px] text-white font-bold">{cursor.user.name?.[0] || 'U'}</span>}
           </div>
           <span className="bg-indigo-500 text-white text-xs px-2 py-0.5 rounded shadow-sm">
             {cursor.user.name}

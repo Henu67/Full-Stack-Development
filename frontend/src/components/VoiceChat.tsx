@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useSocket } from '../context/SocketContext';
 import { useAuth } from '../context/AuthContext';
 import { Mic, MicOff, PhoneOff } from 'lucide-react';
@@ -9,12 +9,18 @@ interface VoiceChatProps {
   onLeave: () => void;
 }
 
+interface RemoteUser {
+  name?: string;
+  email?: string;
+  avatar?: string;
+}
+
 const VoiceChat: React.FC<VoiceChatProps> = ({ roomId, onLeave }) => {
   const { socket, isConnected } = useSocket();
   const { user } = useAuth();
   
   const [isMuted, setIsMuted] = useState(false);
-  const [peers, setPeers] = useState<{ [id: string]: { user: any, stream?: MediaStream } }>({});
+  const [peers, setPeers] = useState<{ [id: string]: { user: RemoteUser, stream?: MediaStream } }>({});
   
   const localStreamRef = useRef<MediaStream | null>(null);
   const peersRef = useRef<{ [id: string]: RTCPeerConnection }>({});
@@ -27,8 +33,79 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ roomId, onLeave }) => {
     ]
   };
 
+  const createPeerConnection = useCallback((socketId: string) => {
+    const pc = new RTCPeerConnection(ICE_SERVERS);
+    
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(track => {
+        pc.addTrack(track, localStreamRef.current!);
+      });
+    }
+
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        socket?.emit('webrtc-ice-candidate', {
+          to: socketId,
+          candidate: event.candidate
+        });
+      }
+    };
+
+    pc.ontrack = (event) => {
+      setPeers(prev => ({
+        ...prev,
+        [socketId]: { ...prev[socketId], stream: event.streams[0] }
+      }));
+    };
+
+    peersRef.current[socketId] = pc;
+    return pc;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [socket]);
+
+  const createOffer = useCallback(async (socketId: string) => {
+    const pc = createPeerConnection(socketId);
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    socket?.emit('webrtc-offer', {
+      to: socketId,
+      offer,
+      user: { name: user?.name || user?.email, avatar: user?.avatar }
+    });
+  }, [createPeerConnection, socket, user]);
+
+  const handleOffer = useCallback(async (offer: RTCSessionDescriptionInit, from: string) => {
+    const pc = createPeerConnection(from);
+    await pc.setRemoteDescription(new RTCSessionDescription(offer));
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    socket?.emit('webrtc-answer', {
+      to: from,
+      answer
+    });
+  }, [createPeerConnection, socket]);
+
+  const handleAnswer = useCallback(async (answer: RTCSessionDescriptionInit, from: string) => {
+    const pc = peersRef.current[from];
+    if (pc) {
+      await pc.setRemoteDescription(new RTCSessionDescription(answer));
+    }
+  }, []);
+
+  const handleIceCandidate = useCallback(async (candidate: RTCIceCandidateInit, from: string) => {
+    const pc = peersRef.current[from];
+    if (pc) {
+      await pc.addIceCandidate(new RTCIceCandidate(candidate));
+    }
+  }, []);
+
   useEffect(() => {
     if (!socket || !isConnected) return;
+
+    // Captured once here (not inside cleanup) — this is the same underlying
+    // object peersRef.current always points to, since it's only ever mutated
+    // in place and never reassigned, so it stays in sync until cleanup runs.
+    const activePeers = peersRef.current;
 
     const initAudio = async () => {
       try {
@@ -41,7 +118,7 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ roomId, onLeave }) => {
         socket.on('webrtc-user-joined', async (data) => {
           const { socketId, user: remoteUser } = data;
           setPeers(prev => ({ ...prev, [socketId]: { user: remoteUser } }));
-          await createOffer(socketId, remoteUser);
+          await createOffer(socketId);
         });
 
         socket.on('webrtc-offer', async (data) => {
@@ -92,74 +169,9 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ roomId, onLeave }) => {
       if (localStreamRef.current) {
         localStreamRef.current.getTracks().forEach(track => track.stop());
       }
-      Object.values(peersRef.current).forEach(pc => pc.close());
+      Object.values(activePeers).forEach(pc => pc.close());
     };
-  }, [socket, isConnected, roomId, user]);
-
-  const createPeerConnection = (socketId: string) => {
-    const pc = new RTCPeerConnection(ICE_SERVERS);
-    
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(track => {
-        pc.addTrack(track, localStreamRef.current!);
-      });
-    }
-
-    pc.onicecandidate = (event) => {
-      if (event.candidate) {
-        socket?.emit('webrtc-ice-candidate', {
-          to: socketId,
-          candidate: event.candidate
-        });
-      }
-    };
-
-    pc.ontrack = (event) => {
-      setPeers(prev => ({
-        ...prev,
-        [socketId]: { ...prev[socketId], stream: event.streams[0] }
-      }));
-    };
-
-    peersRef.current[socketId] = pc;
-    return pc;
-  };
-
-  const createOffer = async (socketId: string, _remoteUser: any) => {
-    const pc = createPeerConnection(socketId);
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    socket?.emit('webrtc-offer', {
-      to: socketId,
-      offer,
-      user: { name: user?.name || user?.email, avatar: user?.avatar }
-    });
-  };
-
-  const handleOffer = async (offer: RTCSessionDescriptionInit, from: string) => {
-    const pc = createPeerConnection(from);
-    await pc.setRemoteDescription(new RTCSessionDescription(offer));
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
-    socket?.emit('webrtc-answer', {
-      to: from,
-      answer
-    });
-  };
-
-  const handleAnswer = async (answer: RTCSessionDescriptionInit, from: string) => {
-    const pc = peersRef.current[from];
-    if (pc) {
-      await pc.setRemoteDescription(new RTCSessionDescription(answer));
-    }
-  };
-
-  const handleIceCandidate = async (candidate: RTCIceCandidateInit, from: string) => {
-    const pc = peersRef.current[from];
-    if (pc) {
-      await pc.addIceCandidate(new RTCIceCandidate(candidate));
-    }
-  };
+  }, [socket, isConnected, roomId, user, createOffer, handleOffer, handleAnswer, handleIceCandidate, onLeave]);
 
   const toggleMute = () => {
     if (localStreamRef.current) {
@@ -181,7 +193,7 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ roomId, onLeave }) => {
   }, [peers]);
 
   return (
-    <div className="bg-gray-900 rounded-xl p-4 flex flex-col gap-4 text-white w-64 shadow-2xl border border-gray-700">
+    <div className="bg-gray-900 rounded-xl p-4 flex flex-col gap-4 text-white w-[min(85vw,16rem)] shadow-2xl border border-gray-700">
       <div className="flex justify-between items-center">
         <h3 className="font-semibold text-sm flex items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />

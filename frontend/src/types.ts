@@ -46,10 +46,10 @@ export function isAdjacentMove(from: TaskStatus, to: TaskStatus): boolean {
   return true; // Allow free dragging across custom columns
 }
 
-export function canEdit(_status?: TaskStatus): boolean {
-  return true; // Any task can be edited now
+export function canEdit(status?: TaskStatus): boolean {
+  return status === 'todo';
 }
 
-export function canDelete(_status?: TaskStatus): boolean {
-  return true; // Any task can be deleted now
+export function canDelete(status?: TaskStatus): boolean {
+  return status !== 'in-progress';
 }

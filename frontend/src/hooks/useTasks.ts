@@ -212,7 +212,3 @@ export function useTasks(roomId?: string) {
 
   return { tasks, setTasks, addTask, updateTask, deleteTask, moveTask };
 }
-
-// Tested by Henuka Pathirana
-
-// Tested by Henuka Pathirana

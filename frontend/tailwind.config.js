@@ -6,11 +6,15 @@ export default {
   ],
   darkMode: 'class',
   theme: {
+    screens: {
+      'xs': '380px',   // small phones (iPhone SE and up)
+      'sm': '451px',   // tablet starts (per project spec: 451-768)
+      'md': '769px',   // desktop starts (per project spec: 769+)
+      'lg': '1024px',  // wider desktop, extra breathing room
+      'xl': '1280px',
+      '2xl': '1536px',
+    },
     extend: {},
   },
   plugins: [],
 }
-
-// Tested by Member 2 (UI Dev)
-
-// Tested by Member 2 (UI Dev)

@@ -1,7 +1,18 @@
 import React, { useState, useEffect } from 'react';
 
-import { Search, UserPlus, Check, X, User } from 'lucide-react';
+import { Search, UserPlus, Check, X, User, UserMinus } from 'lucide-react';
 import toast from 'react-hot-toast';
+
+interface FriendsSidebarProps {
+  isOpen?: boolean;
+  onClose?: () => void;
+  // 'drawer' (default) is the slide-in panel used elsewhere; 'page' renders
+  // the same friends UI as a normal full-width, static page section.
+  variant?: 'drawer' | 'page';
+  // Pre-fills the search box — used when arriving from the Home nav's
+  // friend search bar (e.g. /friends?q=alex).
+  initialQuery?: string;
+}
 
 interface Friend {
   _id: string;
@@ -16,31 +27,34 @@ interface Request {
   status: string;
 }
 
-const FriendsSidebar: React.FC = () => {
+const FriendsSidebar: React.FC<FriendsSidebarProps> = ({ isOpen = false, onClose, variant = 'drawer', initialQuery = '' }) => {
+  const isPage = variant === 'page';
   const [friends, setFriends] = useState<Friend[]>([]);
   const [requests, setRequests] = useState<Request[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(initialQuery);
   const [searchResults, setSearchResults] = useState<Friend[]>([]);
   const [isSearching, setIsSearching] = useState(false);
 
-  const fetchFriends = async () => {
-    try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/friends`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('syncboard_token')}` }
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setFriends(data.friends || []);
-        setRequests(data.friendRequests || []);
-      }
-    } catch (error) {
-      console.error('Failed to fetch friends', error);
-    }
-  };
+  const [friendsVersion, setFriendsVersion] = useState(0);
+  const refreshFriends = () => setFriendsVersion(v => v + 1);
 
   useEffect(() => {
+    const fetchFriends = async () => {
+      try {
+        const response = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/friends`, {
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('syncboard_token')}` }
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setFriends(data.friends || []);
+          setRequests(data.friendRequests || []);
+        }
+      } catch (error) {
+        console.error('Failed to fetch friends', error);
+      }
+    };
     fetchFriends();
-  }, []);
+  }, [friendsVersion]);
 
   useEffect(() => {
     const delayDebounceFn = setTimeout(async () => {
@@ -79,12 +93,35 @@ const FriendsSidebar: React.FC = () => {
       const data = await response.json();
       if (response.ok) {
         toast.success(data.message);
-        fetchFriends(); // Refresh to update any local state
+        refreshFriends(); // Refresh to update any local state
       } else {
         toast.error(data.message);
       }
-    } catch (error) {
+    } catch {
       toast.error('Failed to send request');
+    }
+  };
+
+  const removeFriend = async (friendId: string) => {
+    if (!window.confirm('Remove this friend?')) return;
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/friends/remove`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('syncboard_token')}`
+        },
+        body: JSON.stringify({ friendId })
+      });
+      if (response.ok) {
+        toast.success('Friend removed');
+        refreshFriends();
+      } else {
+        const data = await response.json();
+        toast.error(data.message || 'Failed to remove friend');
+      }
+    } catch {
+      toast.error('Failed to remove friend');
     }
   };
 
@@ -100,17 +137,48 @@ const FriendsSidebar: React.FC = () => {
       });
       if (response.ok) {
         toast.success(`Request ${action}`);
-        fetchFriends(); // Refresh lists
+        refreshFriends(); // Refresh lists
       }
-    } catch (error) {
+    } catch {
       toast.error('Failed to process request');
     }
   };
 
   return (
-    <div className="w-80 bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-800 h-full flex flex-col transition-colors duration-200">
+    <>
+      {/* Backdrop for drawer mode (mobile & tablet, < desktop) */}
+      {!isPage && isOpen && (
+        <div
+          className="md:hidden fixed inset-0 z-40 bg-black/40"
+          onClick={onClose}
+        />
+      )}
+
+      <div
+        className={
+          isPage
+            ? 'static w-full bg-white dark:bg-gray-900 flex flex-col transition-colors duration-200'
+            : `fixed md:static inset-y-0 right-0 z-50 md:z-auto
+          w-[85vw] max-w-xs sm:max-w-sm md:w-80 md:max-w-none
+          bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-800
+          h-full flex flex-col transition-colors duration-200
+          transform transition-transform duration-300 ease-out
+          ${isOpen ? 'translate-x-0' : 'translate-x-full'} md:translate-x-0`
+        }
+      >
       <div className="p-4 border-b border-gray-200 dark:border-gray-800">
-        <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">Friends</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Friends</h2>
+          {!isPage && (
+            <button
+              onClick={onClose}
+              className="md:hidden p-1.5 -mr-1.5 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
+              aria-label="Close friends panel"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          )}
+        </div>
         
         <div className="relative">
           <input
@@ -201,15 +269,24 @@ const FriendsSidebar: React.FC = () => {
                 <p className="text-sm text-gray-500 dark:text-gray-400">You haven't added any friends yet.</p>
               ) : (
                 friends.map(friend => (
-                  <div key={friend._id} className="flex items-center gap-3 p-2 hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded-lg cursor-pointer transition-colors">
-                    <div className="w-8 h-8 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden flex items-center justify-center relative">
-                      {friend.avatar ? <img src={friend.avatar} alt="" className="w-full h-full object-cover" /> : <User className="w-4 h-4 text-gray-500 dark:text-gray-400" />}
-                      <div className="absolute bottom-0 right-0 w-2 h-2 bg-green-500 border border-white dark:border-gray-800 rounded-full"></div>
+                  <div key={friend._id} className="group flex items-center justify-between gap-3 p-2 hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded-lg transition-colors">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-8 h-8 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden flex items-center justify-center relative shrink-0">
+                        {friend.avatar ? <img src={friend.avatar} alt="" className="w-full h-full object-cover" /> : <User className="w-4 h-4 text-gray-500 dark:text-gray-400" />}
+                        <div className="absolute bottom-0 right-0 w-2 h-2 bg-green-500 border border-white dark:border-gray-800 rounded-full"></div>
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{friend.name || 'Unnamed'}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[10rem]">{friend.email}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{friend.name || 'Unnamed'}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 truncate w-40">{friend.email}</p>
-                    </div>
+                    <button
+                      onClick={() => removeFriend(friend._id)}
+                      className="opacity-0 group-hover:opacity-100 p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full transition-all shrink-0"
+                      title="Remove friend"
+                    >
+                      <UserMinus className="w-4 h-4" />
+                    </button>
                   </div>
                 ))
               )}
@@ -217,7 +294,8 @@ const FriendsSidebar: React.FC = () => {
           </>
         )}
       </div>
-    </div>
+      </div>
+    </>
   );
 };
 
