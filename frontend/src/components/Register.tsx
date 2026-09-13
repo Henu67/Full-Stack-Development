@@ -3,15 +3,55 @@ import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { Pin as PinIcon } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { motion } from 'framer-motion';
+import { GoogleLogin, type CredentialResponse } from '@react-oauth/google';
+import { useAuth } from '../context/AuthContext';
+import { getErrorMessage } from '../utils/getErrorMessage';
+
+const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
 
 const Register: React.FC = () => {
-  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
   const [isLoading, setIsLoading] = useState(false);
+
+  const handleGoogleSuccess = async (credentialResponse: CredentialResponse) => {
+    if (!credentialResponse.credential) {
+      toast.error('Google sign-in failed');
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const response = await fetch(`/api/auth/google`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ credential: credentialResponse.credential }),
+      });
+
+      let data;
+      try {
+        data = await response.json();
+      } catch (e) {
+        throw new Error('Server returned an invalid response.', { cause: e });
+      }
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Google sign-in failed');
+      }
+
+      // Google sign-in both creates and logs in an account in one step.
+      login(data.user, data.token);
+      toast.success('Account ready!');
+      navigate(location.state?.from?.pathname || '/', { replace: true });
+    } catch (error) {
+      toast.error(getErrorMessage(error));
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,7 +68,7 @@ const Register: React.FC = () => {
       try {
         data = await response.json();
       } catch (e) {
-        throw new Error('Server returned an invalid response. Ensure Environment Variables (MONGODB_URI) are set in Vercel.');
+        throw new Error('Server returned an invalid response. Ensure Environment Variables (MONGODB_URI) are set in Vercel.', { cause: e });
       }
 
       if (!response.ok) {
@@ -37,8 +77,8 @@ const Register: React.FC = () => {
 
       toast.success('Registration successful! Please login.');
       navigate('/login', { state: { from: location.state?.from } });
-    } catch (error: any) {
-      toast.error(error.message);
+    } catch (error) {
+      toast.error(getErrorMessage(error));
     } finally {
       setIsLoading(false);
     }
@@ -63,20 +103,8 @@ const Register: React.FC = () => {
         
         <form onSubmit={handleSubmit} className="auth-form">
           <div className="auth-form-group">
-            <label htmlFor="name">Name</label>
+            <label>Email</label>
             <input
-              id="name"
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-              disabled={isLoading}
-            />
-          </div>
-          <div className="auth-form-group">
-            <label htmlFor="email">Email</label>
-            <input
-              id="email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -85,9 +113,8 @@ const Register: React.FC = () => {
             />
           </div>
           <div className="auth-form-group">
-            <label htmlFor="password">Password</label>
+            <label>Password</label>
             <input
-              id="password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -99,6 +126,23 @@ const Register: React.FC = () => {
             {isLoading ? 'Signing up...' : 'Sign Up'}
           </button>
         </form>
+
+        {googleClientId && (
+          <>
+            <div className="auth-divider"><span>or</span></div>
+            <div className="auth-google-btn">
+              <GoogleLogin
+                onSuccess={handleGoogleSuccess}
+                onError={() => toast.error('Google sign-in failed')}
+                theme="outline"
+                size="large"
+                shape="pill"
+                text="signup_with"
+                width="320"
+              />
+            </div>
+          </>
+        )}
         
         <div className="auth-footer">
           Already have an account?

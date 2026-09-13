@@ -70,7 +70,3 @@ src/
 - No backend, auth, or real-time sync yet — coming in later sessions per the project brief.
 - No automated tests yet (Jest + RTL planned for a later session).
 - Data is per-browser (`localStorage`), not shared between teammates yet.
-
-// Tested by Member 1 (Frontend Lead)
-
-// Tested by Member 1 (Frontend Lead)

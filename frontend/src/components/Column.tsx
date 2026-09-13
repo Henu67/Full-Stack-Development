@@ -3,19 +3,15 @@ import type { ColumnConfig, Task } from '../types';
 import { isAdjacentMove } from '../types';
 import TaskCard from './TaskCard';
 
-import { Edit2, Trash2 } from 'lucide-react';
-
 interface ColumnProps {
   config: ColumnConfig;
   tasks: Task[];
   activeTask: Task | null;
   onEdit: (task: Task) => void;
   onRequestDelete: (task: Task) => void;
-  onEditColumn?: (id: string, newTitle: string) => void;
-  onDeleteColumn?: (id: string) => void;
 }
 
-export default function Column({ config, tasks, activeTask, onEdit, onRequestDelete, onEditColumn, onDeleteColumn }: ColumnProps) {
+export default function Column({ config, tasks, activeTask, onEdit, onRequestDelete }: ColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id: config.id });
 
   const isDropTarget = !!activeTask && activeTask.status !== config.id;
@@ -29,24 +25,6 @@ export default function Column({ config, tasks, activeTask, onEdit, onRequestDel
           <h3 className="flex-1 truncate pr-2">{config.title}</h3>
           <div className="flex items-center gap-1">
             <span className="column-count mr-2">{tasks.length}</span>
-            {onEditColumn && (
-              <button 
-                onClick={() => onEditColumn(config.id, config.title)}
-                className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded text-gray-500 transition-colors"
-                title="Rename Column"
-              >
-                <Edit2 size={14} />
-              </button>
-            )}
-            {onDeleteColumn && (
-              <button 
-                onClick={() => onDeleteColumn(config.id)}
-                className="p-1 hover:bg-red-100 dark:hover:bg-red-900/30 text-red-400 hover:text-red-500 rounded transition-colors"
-                title="Delete Column"
-              >
-                <Trash2 size={14} />
-              </button>
-            )}
           </div>
         </div>
       </div>

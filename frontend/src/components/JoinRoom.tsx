@@ -1,83 +1,75 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { Loader2, Link2, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { Users, Loader2 } from 'lucide-react';
 
+// Landing page for shared invite links (/join/:code). Auto-joins the room
+// using the code in the URL, then drops the user straight into it — this
+// previously just re-rendered the whole dashboard and never used the code
+// at all, so invite links didn't actually work.
 const JoinRoom: React.FC = () => {
   const { code } = useParams<{ code: string }>();
   const navigate = useNavigate();
-  const { isAuthenticated, logout } = useAuth();
-  const [status, setStatus] = useState<'loading' | 'error' | 'success'>('loading');
-  const [message, setMessage] = useState('');
+  const { token } = useAuth();
+  const [status, setStatus] = useState<'joining' | 'error'>('joining');
+  const [errorMessage, setErrorMessage] = useState('');
 
   useEffect(() => {
-    if (!isAuthenticated || !code) return;
+    if (!code || !token) return;
 
-    const joinRoom = async () => {
+    const join = async () => {
       try {
         const response = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/rooms/join`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('syncboard_token')}`
+            Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({ inviteCode: code })
+          body: JSON.stringify({ inviteCode: code }),
         });
-
         const data = await response.json();
 
         if (response.ok) {
-          toast.success('Joined room!');
-          setStatus('success');
-          navigate(`/room/${data.room._id}`);
-        } else if (response.status === 401 || response.status === 400) {
-          if (data.message === 'Invalid token.') {
-             logout();
-             toast.error('Session expired. Please log in again to join.');
-          } else {
-             setStatus('error');
-             setMessage(data.message || 'Failed to join room');
-          }
+          toast.success(data.message || 'Joined room!');
+          navigate(`/room/${data.room?._id}`, { replace: true });
         } else if (data.roomId) {
-          // Already a member
-          toast.success('You are already in this room');
-          navigate(`/room/${data.roomId}`);
+          // Already a member of this room — just take them straight in.
+          navigate(`/room/${data.roomId}`, { replace: true });
         } else {
           setStatus('error');
-          setMessage(data.message || 'Failed to join room');
+          setErrorMessage(data.message || 'This invite link is invalid or has expired.');
         }
-      } catch (error) {
+      } catch {
         setStatus('error');
-        setMessage('Network error — could not join room');
+        setErrorMessage('Failed to join room — network error.');
       }
     };
 
-    joinRoom();
-  }, [isAuthenticated, code, navigate]);
+    join();
+  }, [code, token, navigate]);
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
-      <div className="bg-white rounded-xl shadow-lg p-8 max-w-sm w-full text-center">
-        {status === 'loading' && (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 px-4">
+      <div className="max-w-sm w-full text-center bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-8 shadow-sm">
+        {status === 'joining' ? (
           <>
-            <Loader2 className="w-10 h-10 text-indigo-500 animate-spin mx-auto mb-4" />
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">Joining Room...</h2>
-            <p className="text-gray-500 text-sm">Please wait while we add you to the room.</p>
+            <Loader2 className="w-10 h-10 text-indigo-600 dark:text-indigo-400 animate-spin mx-auto mb-4" />
+            <h1 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">Joining room…</h1>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Hang tight, we're getting you in.</p>
           </>
-        )}
-        {status === 'error' && (
+        ) : (
           <>
-            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Users className="w-8 h-8 text-red-500" />
+            <div className="w-14 h-14 rounded-full bg-red-50 dark:bg-red-900/20 flex items-center justify-center mx-auto mb-4">
+              <AlertTriangle className="w-7 h-7 text-red-500" />
             </div>
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">Could not join</h2>
-            <p className="text-gray-500 text-sm mb-6">{message}</p>
+            <h1 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">Couldn't join room</h1>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">{errorMessage}</p>
             <button
-              onClick={() => navigate('/')}
-              className="px-6 py-2.5 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors"
+              onClick={() => navigate('/rooms')}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
             >
-              Go to Dashboard
+              <Link2 className="w-4 h-4" /> Go to Rooms
             </button>
           </>
         )}

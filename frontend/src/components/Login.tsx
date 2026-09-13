@@ -4,6 +4,10 @@ import { useAuth } from '../context/AuthContext';
 import { Pin as PinIcon } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { motion } from 'framer-motion';
+import { GoogleLogin, type CredentialResponse } from '@react-oauth/google';
+import { getErrorMessage } from '../utils/getErrorMessage';
+
+const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
 
 const Login: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -15,6 +19,40 @@ const Login: React.FC = () => {
   const from = location.state?.from?.pathname || '/';
 
   const [isLoading, setIsLoading] = useState(false);
+
+  const handleGoogleSuccess = async (credentialResponse: CredentialResponse) => {
+    if (!credentialResponse.credential) {
+      toast.error('Google sign-in failed');
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const response = await fetch(`/api/auth/google`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ credential: credentialResponse.credential }),
+      });
+
+      let data;
+      try {
+        data = await response.json();
+      } catch (e) {
+        throw new Error('Server returned an invalid response.', { cause: e });
+      }
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Google sign-in failed');
+      }
+
+      login(data.user, data.token);
+      toast.success('Logged in successfully!');
+      navigate(from, { replace: true });
+    } catch (error) {
+      toast.error(getErrorMessage(error));
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,7 +69,7 @@ const Login: React.FC = () => {
       try {
         data = await response.json();
       } catch (e) {
-        throw new Error('Server returned an invalid response. Ensure Environment Variables (MONGODB_URI) are set in Vercel.');
+        throw new Error('Server returned an invalid response. Ensure Environment Variables (MONGODB_URI) are set in Vercel.', { cause: e });
       }
 
       if (!response.ok) {
@@ -41,8 +79,8 @@ const Login: React.FC = () => {
       login(data.user, data.token);
       toast.success('Logged in successfully!');
       navigate(from, { replace: true });
-    } catch (error: any) {
-      toast.error(error.message);
+    } catch (error) {
+      toast.error(getErrorMessage(error));
     } finally {
       setIsLoading(false);
     }
@@ -67,9 +105,8 @@ const Login: React.FC = () => {
         
         <form onSubmit={handleSubmit} className="auth-form">
           <div className="auth-form-group">
-            <label htmlFor="email">Email</label>
+            <label>Email</label>
             <input
-              id="email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -78,9 +115,8 @@ const Login: React.FC = () => {
             />
           </div>
           <div className="auth-form-group">
-            <label htmlFor="password">Password</label>
+            <label>Password</label>
             <input
-              id="password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -92,6 +128,23 @@ const Login: React.FC = () => {
             {isLoading ? 'Logging in...' : 'Log In'}
           </button>
         </form>
+
+        {googleClientId && (
+          <>
+            <div className="auth-divider"><span>or</span></div>
+            <div className="auth-google-btn">
+              <GoogleLogin
+                onSuccess={handleGoogleSuccess}
+                onError={() => toast.error('Google sign-in failed')}
+                theme="outline"
+                size="large"
+                shape="pill"
+                text="continue_with"
+                width="320"
+              />
+            </div>
+          </>
+        )}
         
         <div className="auth-footer">
           Don't have an account?
