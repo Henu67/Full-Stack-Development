@@ -27,6 +27,7 @@ import TaskModal from './TaskModal';
 import ChatPanel from './ChatPanel';
 import VoiceChat from './VoiceChat';
 import CalendarView from './CalendarView';
+import RoomInvitePanel from './RoomInvitePanel';
 
 interface Activity {
   id: string;
@@ -96,6 +97,7 @@ export default function Board({ embedded = false }: BoardProps) {
   // Pro Features State
   const [searchQuery, setSearchQuery] = useState('');
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [invitePanelOpen, setInvitePanelOpen] = useState(false);
   const [activityLog, setActivityLog] = useState<Activity[]>([]);
   const [hasUnread, setHasUnread] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -239,6 +241,7 @@ export default function Board({ embedded = false }: BoardProps) {
 
   
   const notifRef = useRef<HTMLDivElement>(null);
+  const invitePanelRef = useRef<HTMLDivElement>(null);
   const notifiedTasks = useRef<Set<string>>(new Set());
 
   const addActivity = useCallback((message: string) => {
@@ -291,6 +294,17 @@ export default function Board({ embedded = false }: BoardProps) {
     }
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Close invite panel on click outside
+  useEffect(() => {
+    function handleClickOutsideInvite(event: MouseEvent) {
+      if (invitePanelRef.current && !invitePanelRef.current.contains(event.target as Node)) {
+        setInvitePanelOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutsideInvite);
+    return () => document.removeEventListener('mousedown', handleClickOutsideInvite);
   }, []);
 
   const sensors = useSensors(
@@ -598,26 +612,37 @@ export default function Board({ embedded = false }: BoardProps) {
                   </span>
                 )}
 
-                <button
-                  onClick={() => {
-                    // Fetch the room to get the invite code if we don't have it locally
-                    fetch(`${import.meta.env.VITE_API_URL || ''}/api/rooms/${actualRoomId}`, {
-                      headers: { Authorization: `Bearer ${token}` }
-                    })
-                    .then(res => res.json())
-                    .then(data => {
-                      if (data.inviteCode) {
-                        navigator.clipboard.writeText(`${window.location.origin}/join/${data.inviteCode}`);
-                        toast.success('Invite link copied!');
-                      }
-                    });
-                  }}
-                  className="board-invite-btn"
-                  title="Copy Invite Link"
-                >
-                  <Plus size={14} strokeWidth={3} />
-                  <span>Invite</span>
-                </button>
+                <div className="relative" ref={invitePanelRef}>
+                  <button
+                    onClick={() => {
+                      fetch(`${import.meta.env.VITE_API_URL || ''}/api/rooms/${actualRoomId}`, {
+                        headers: { Authorization: `Bearer ${token}` }
+                      })
+                      .then(res => res.json())
+                      .then(data => {
+                        if (data.inviteCode) {
+                          navigator.clipboard.writeText(`${window.location.origin}/join/${data.inviteCode}`);
+                          toast.success('Invite link copied!');
+                        }
+                      });
+                      setInvitePanelOpen((prev) => !prev);
+                    }}
+                    className="board-invite-btn"
+                    title="Copy Invite Link & Invite Friends"
+                  >
+                    <Plus size={14} strokeWidth={3} />
+                    <span>Invite</span>
+                  </button>
+
+                  {invitePanelOpen && (
+                    <RoomInvitePanel
+                      roomId={actualRoomId ?? ''}
+                      token={token ?? ''}
+                      existingMemberIds={roomMembers.map((m: RoomMember) => m.user?._id).filter((id): id is string => Boolean(id))}
+                      onClose={() => setInvitePanelOpen(false)}
+                    />
+                  )}
+                </div>
               </>
             )}
           </div>
