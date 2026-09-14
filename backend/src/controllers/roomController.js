@@ -4,6 +4,7 @@ import Message from '../models/Message.js';
 import Task from '../models/Task.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiError } from '../utils/ApiError.js';
+import Notification from '../models/Notification.js';
 
 function isMember(room, userId) {
   return room.members.some((m) => m.user && m.user._id ? m.user._id.toString() === userId.toString() : m.user?.toString() === userId.toString());
@@ -170,6 +171,14 @@ export const inviteToRoom = asyncHandler(async (req, res) => {
 
   room.members.push({ user: targetUserId, role: 'editor' });
   await room.save();
+
+  await Notification.create({
+    recipient: targetUserId,
+    type: 'room-invite',
+    message: `${req.user.name || 'Someone'} added you to "${room.name}"`,
+    room: room._id,
+    fromUser: req.user._id,
+  });
 
   res.json({ message: 'User invited successfully', room });
 });
