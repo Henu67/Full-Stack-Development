@@ -1,75 +1,164 @@
-# SynchBoard - Real-time Collaborative Workspace
+# SynchBoard — Real-Time Collaborative Task Board
 
-SynchBoard is a full-stack MERN application that provides a real-time, drag-and-drop Kanban board for personal and team task management. It was built progressively across 5 sessions to meet all mandatory technical requirements.
+SynchBoard is a full-stack Kanban-style task board. Users can manage personal tasks, or create shared "Rooms" with teammates — organizing work into drag-and-drop columns, chatting in-room, and managing a friends list. Authentication supports both email/password and Google Sign-In.
 
-## 🏛️ Architecture & Tech Stack
+## Tech Stack
 
-```mermaid
-graph TD
-    Client[React/Vite Frontend]
-    API[Express/Node.js API]
-    DB[(MongoDB Atlas)]
-    
-    Client -- HTTP REST --> API
-    Client -- WebSockets --> API
-    API -- Mongoose ODM --> DB
+- **Frontend:** React + TypeScript + Vite + Tailwind CSS
+- **Backend:** Node.js + Express (MVC structure)
+- **Database:** MongoDB Atlas (cloud-hosted)
+- **Auth:** JWT (email/password) + Google Sign-In (`google-auth-library`)
+- **File uploads:** Cloudinary
+- **Testing:** Node's built-in test runner (`node --test`)
+- **CI/CD:** GitHub Actions
+- **Containerization:** Docker + Docker Compose
+
+## Project Structure
+
 ```
-
-### Tech Stack
-*   **Frontend:** React, TypeScript, Vite, Tailwind CSS, @dnd-kit (Drag and Drop), Framer Motion, Vitest + React Testing Library (Testing).
-*   **Backend:** Node.js, Express, Socket.io (WebSockets), Jest + Supertest (Testing).
-*   **Database:** MongoDB Atlas, Mongoose (ODM).
-*   **DevOps:** Docker, Docker Compose, GitHub Actions (CI Pipeline), Vercel (Deployment).
-
-## 🛠️ How to Run the Project Locally
-
-### Option 1: Using Docker Compose (Recommended)
-Make sure you have Docker Desktop installed and running.
-1. Clone the repository and navigate to the project root.
-2. Run the following command:
-   ```bash
-   docker-compose up --build
-   ```
-3. The frontend will be available at `http://localhost:5173` and the backend API at `http://localhost:5000`.
-
-### Option 2: Manual Setup
-#### Setup the Backend
-1. `cd backend`
-2. `npm install`
-3. Create a `.env` file with `PORT=5000`, `MONGO_URI=your_mongo_url`, `JWT_SECRET=secret`, `FRONTEND_URL=http://localhost:5173`.
-4. `npm run dev`
-
-#### Setup the Frontend
-1. `cd frontend`
-2. `npm install`
-3. Create a `.env` file with `VITE_API_URL=http://localhost:5000`.
-4. `npm run dev`
-
-## 🚀 Deployment Links
-*   **Live App URL:** https://synch-boardfinal.vercel.app/
-*   **Repository:** https://github.com/thisal-wtc/SynchBoardfinal-
-
-## 🔄 Approach to Concurrent Edits
-We handle concurrent edits using **Optimistic Concurrency Control (OCC)** provided natively by Mongoose (`optimisticConcurrency: true` & `__v` version key). 
-If User A and User B load the same task (v1), and User A moves the task to "Done" (saving as v2), when User B tries to simultaneously move that task to "In Progress" (submitting v1), the database detects the version mismatch and rejects User B's update with a `VersionError` (409 Conflict). The frontend catches this error and surfaces it to the user, prompting them to refresh and fetch the latest changes, preventing silent data overwriting.
-
-## ⚠️ Known Limitations
-*   Due to Vercel's serverless environment, persistent WebSockets (Socket.io) can occasionally drop connection on inactivity. We mitigate this by falling back to REST API polling and cache invalidation.
-*   The Free Tier MongoDB Atlas cluster has limited connection pooling, which might cause initial cold-start delays.
+├── backend/          Express REST API (MVC layout)
+│   └── src/
+│       ├── config/        DB connection
+│       ├── controllers/    Route logic
+│       ├── middleware/    Auth guard, error handler
+│       ├── models/        Mongoose schemas
+│       ├── routes/        Route definitions
+│       ├── app.js         Express app setup
+│       └── server.js      Entry point
+├── frontend/         React + Vite + TypeScript client
+└── docker-compose.yml
+```
 
 ---
 
-## 👥 One-Page Team Reflection
+## How to Run This Project
 
-### What Worked Well
-*   Adopting a component-driven design in React made it extremely easy to reuse the Kanban column and task cards across personal and team boards.
-*   Tailwind CSS accelerated our UI development drastically, allowing us to build a premium, glassmorphism-themed interface without writing hundreds of lines of custom CSS.
+You need two things before starting:
+1. **Node.js 18 or newer** — [nodejs.org](https://nodejs.org)
+2. **A `.env` file for both `backend/` and `frontend/`** with real values (see below)
 
-### What We Would Do Differently
-*   We would introduce a state-management library like Redux Toolkit or Zustand earlier. Relying heavily on React Context for complex board states caused some unnecessary re-renders.
-*   We would deploy our backend to a stateful container service (like Render or AWS App Runner) instead of Vercel Serverless to ensure flawless, uninterrupted WebSocket connections.
+### Step 1 — Clone the repository
 
-### Division of Work
-*   **[Member 1 Name]:** Handled the React frontend, Tailwind styling, and Drag-and-Drop functionality using `@dnd-kit`.
-*   **[Member 2 Name]:** Developed the Express backend REST APIs, MongoDB schema design, JWT Authentication, and implemented optimistic concurrency control.
-*   **[Member 3 Name]:** Setup Docker, GitHub Actions CI Pipeline, wrote Jest test suites for both client and server, and managed the Vercel deployment.
+```bash
+git clone https://github.com/Henu67/Full-Stack-Development.git
+cd Full-Stack-Development
+```
+
+### Step 2 — Set up environment variables
+
+Each folder needs its own `.env` file. Copy the example files and fill in real values:
+
+```bash
+cp backend/.env.example backend/.env
+cp frontend/.env.example frontend/.env
+```
+
+**`backend/.env` needs:**
+```
+PORT=5000
+MONGODB_URI=            # MongoDB Atlas connection string
+JWT_SECRET=              # any long random string
+CLIENT_ORIGIN=http://localhost:5173
+CLOUDINARY_CLOUD_NAME=
+CLOUDINARY_API_KEY=
+CLOUDINARY_API_SECRET=
+GOOGLE_CLIENT_ID=
+```
+
+**`frontend/.env` needs:**
+```
+VITE_API_URL=http://localhost:5000
+VITE_GOOGLE_CLIENT_ID=
+```
+
+> These `.env` files contain real secrets and are intentionally excluded from this repository.
+
+---
+
+### Option A — Run directly with Node.js (recommended)
+
+**Backend** (in one terminal):
+```bash
+cd backend
+npm install
+npm run dev
+```
+Runs on **http://localhost:5000**. You should see `MongoDB connected` in the terminal once it starts successfully.
+
+**Frontend** (in a separate terminal):
+```bash
+cd frontend
+npm install
+npm run dev
+```
+Runs on **http://localhost:5173** — open this in your browser.
+
+---
+
+### Option B — Run with Docker Compose
+
+Requires Docker Desktop installed and running.
+
+```bash
+docker compose up --build
+```
+
+This builds and starts both the backend and frontend containers together. The database is **not** containerized — the app connects to MongoDB Atlas (cloud), so no local database container is needed. Once running, open **http://localhost:5173**.
+
+To stop:
+```bash
+docker compose down
+```
+
+---
+
+## Running Backend Tests
+
+```bash
+cd backend
+npm test
+```
+
+This runs the backend's unit test suite (Node's built-in test runner), covering the `escapeRegex` security fix that protects the friend-search endpoint against ReDoS attacks. Expected output ends with `pass 3`, `fail 0`.
+
+## Building for Production
+
+```bash
+cd frontend
+npm run build
+```
+
+Produces an optimized static build in `frontend/dist/`.
+
+---
+
+## API Testing
+
+A Postman collection is included at the repository root: `SynchBoard_Postman_Collection.json`. Import it into Postman, set the `baseUrl` collection variable to `http://localhost:5000`, and use the **Login** request first — it automatically saves the returned token for use in every other request.
+
+---
+
+## Continuous Integration
+
+Every push and pull request automatically runs backend tests and a full frontend production build via GitHub Actions (`.github/workflows/ci.yml`) — check the **Actions** tab on GitHub to see pipeline status.
+
+---
+
+## Troubleshooting
+
+| Problem | Fix |
+|---|---|
+| `Cannot find module` errors | Run `npm install` again in that folder |
+| Backend can't connect to MongoDB | Check `MONGODB_URI` in `backend/.env` is correct and you're online (Atlas is cloud-hosted) |
+| Frontend loads but API calls fail | Check `VITE_API_URL=http://localhost:5000` in `frontend/.env`, and confirm the backend terminal is still running |
+| Port 5000 or 5173 already in use | Close whatever else is using that port, or change the port in `.env` |
+
+---
+
+## Known Limitations
+
+- Chat and task-board updates currently work over REST (post → refetch), not live WebSocket push. This was a deliberate scoping decision. The full project report includes all the reasoning and planned next steps.
+- No public deployment is live yet; the app is designed to run locally or via Docker for this submission.
+- Deployment plan: 
+    - Frontend: vercel
+    - Backend: Render
